@@ -1,0 +1,27 @@
+# Yellow Pad teleop config (ROS 2 Kilted).
+# The pad reports each arrow's on-screen speed as a 0..1 stick value;
+# the scales below set what 100% means on this robot.
+
+joy_node:
+  ros__parameters:
+    device_name: "Yellow Pad"
+    # No deadzone: the pad sends exact values, and a deadzone would rescale them.
+    deadzone: 0.0
+    autorepeat_rate: 20.0
+
+teleop_twist_joy_node:
+  ros__parameters:
+    # Left stick Y (Up/Down arrows) drives forward/back.
+    axis_linear:
+      x: 1
+    scale_linear:
+      x: 0.3          # m/s at 100%
+    # Left stick X (Left/Right arrows) turns.
+    axis_angular:
+      yaw: 0
+    scale_angular:
+      yaw: 1.0        # rad/s at 100%
+    # The pad holds button 0 while an arrow is pressed: no button, no motion.
+    require_enable_button: true
+    enable_button: 0
+    enable_turbo_button: -1
