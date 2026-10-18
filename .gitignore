@@ -1,0 +1,5 @@
+# PlatformIO build output and downloaded libraries
+firmware/.pio/
+
+# macOS
+.DS_Store
