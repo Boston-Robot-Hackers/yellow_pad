@@ -5,7 +5,7 @@ Yellow Display" board shows four arrows and per-direction speed settings, and
 pairs with the robot's Raspberry Pi as a standard BLE gamepad. On the Pi, the
 standard `joy` and `teleop_twist_joy` packages turn it into `/cmd_vel`.
 
-Last updated 2026-10-14.
+Last updated 2026-10-18.
 
 ## Where things stand
 
@@ -38,12 +38,12 @@ Not done yet:
 ## Layout
 
 ```
-yellow/
+yellow_pad/
 ├── NOTES.md          this file
 ├── backup/           factory firmware image + how to restore it (see backup/README.md)
 ├── firmware/         ESP32 firmware (PlatformIO project)
-│   ├── platformio.ini
-│   └── src/main.cpp
+│   ├── platformio.ini   two envs: cyd (tabbed design), cyd_v1 (first design)
+│   └── src/main.cpp     tabbed design; src/arrows_v1.cpp is the first design
 └── yellow_pad/       ROS 2 package yellow_pad (copy to the Pi's ~/ros2_ws/src/)
     ├── package.xml, CMakeLists.txt, README.md
     ├── config/yellow_pad.yaml
@@ -69,8 +69,47 @@ yellow/
   operations are fine.
 - **Power on the go:** a USB power bank with a micro-USB cable. Watch for
   banks that auto-shut-off at low current (the board draws roughly
-  100-150 mA); use a bank with a low-current/trickle mode. No battery charging
-  circuit on this board, so don't connect a LiPo directly.
+  100-150 mA); use a bank with a low-current/trickle mode. (A power bank's
+  own lithium cells are fine: it outputs regulated 5 V and has its own
+  charging and protection.) Don't wire a bare LiPo cell to the board: it
+  gives 3.0-4.2 V rather than 5 V, and the board has no charging or
+  low-voltage cutoff.
+- **Built-in battery (planned, not yet tested):** NULLLAB PM11 module
+  (docs: https://github.com/nulllaborg/pm11-module). 1200 mAh LiPo, boost to
+  5 V/1.2 A, USB-C charging (~1 hour), 4-LED gauge, slide switch, 56×40 mm
+  with two M4 holes, so it fits behind the board. Expect roughly 5-8 hours of
+  driving per charge.
+  - Connect with a short USB-A to micro-USB cable, or wire its 5V header to
+    the CYD's 4-pin P1 connector (5V → VIN, GND → GND; check polarity against
+    both pinouts first).
+  - **It has no low-battery cutoff.** Switch it OFF after driving (OFF fully
+    disconnects the battery), and recharge when only one LED is lit.
+  - **Not a UPS:** plugging or unplugging USB-C while running will likely
+    reset the pad. That's safe (Bluetooth drops, the robot stops), but don't
+    do it mid-drive.
+  - With the switch OFF and USB-C plugged in, USB powers the board and the
+    battery stays out of the circuit. Handy at the bench.
+  - To check once it arrives: the docs don't mention a low-load auto
+    shut-off, but confirm by running the pad on it for 30+ minutes.
+- **Other battery options** (suggestions from Alan Kilian, 2026-10-18):
+  - All-in-one: the NULLLAB PM11 above
+    (https://www.amazon.com/dp/B0GWZTQC35).
+  - Separate charger plus cell: Diymore TP4056 USB-C charger boards, 5-pack
+    (https://www.amazon.com/dp/B07MDPLQ18). 1 A charging, 4.2 V cutoff,
+    discharge cutoff at 3.2 V, 3 A over-current protection. Check whether
+    this board also boosts to 5 V: a plain TP4056 outputs only the battery's
+    3.0-4.2 V, so it would need a separate 5 V boost board as well.
+  - A matching cell: Qimoo 503035 3.7 V 500 mAh LiPo
+    (https://www.amazon.com/dp/B0CNLNFPYM). About 2-3 hours of driving at
+    the pad's draw, less than half the PM11's runtime.
+  - Adafruit PowerBoost 500C (https://www.adafruit.com/product/1944):
+    charger and 5 V boost in one board, runs the load while charging, pairs
+    with any 1S LiPo cell. Well documented. It's the more reliable choice
+    if the PM11 disappoints.
+  - Cheapest: TP4057 USB-C charger boards with protection, 9-pack, from
+    Temu
+    (https://www.temu.com/9pcs-tp4057-1a-3-7v-lithium-battery-charging-and--board-with-protection-type-c-usb-c-li--charging-board-g-606737797099759.html).
+    These charge only and don't boost, so they need a 5 V boost board too.
 
 ## How it works
 
@@ -83,6 +122,27 @@ Yellow Pad ──BLE gamepad──▶ Pi: /dev/input/js0
 
 ### The screen (landscape, 320x240)
 
+There are two designs; both send the same gamepad reports for the arrows.
+
+**Tabbed design** (`src/main.cpp`, env `cyd`, the default):
+
+- **Top:** Bluetooth status, then two tabs, **Drive** and **Settings**.
+- **Drive:** the cross of four arrows with a red STOP in the middle, and three
+  buttons **A**, **B**, **C** on the right. Holding A/B/C holds gamepad
+  buttons 2/3/4. Nothing on the Pi uses those yet.
+- **Settings:** speeds per direction in real units: Forward and Back in m/s
+  (step 0.05, default 0.15), Left and Right in rad/s (step 0.10, default 0.50).
+  Tap a row, then **−** / **+**. Saved in flash (NVS, namespace `yellowpad2`).
+  New settings go in the `settings[]` table in `main.cpp`. Four rows fill the
+  page, so a fifth setting will need paging or scrolling.
+- The pad converts a speed to a stick value by dividing by the robot's
+  full-stick speed, `LINEAR_MAX` (0.3 m/s) and `ANGULAR_MAX` (1.0 rad/s) in
+  `main.cpp`. **These must match `scale_linear.x` and `scale_angular.yaw` in
+  `config/yellow_pad.yaml`**; if the YAML changes, change them too, or the
+  displayed m/s will be wrong. The maximum speed is still capped by the YAML.
+
+**First design** (`src/arrows_v1.cpp`, env `cyd_v1`):
+
 - **Left:** a cross of four arrows with a red STOP in the middle.
 - **Right:** a speed list (Up, Down, Left, Right). Tap a row to select it
   (yellow), then **−** / **+** change it by 10%. Speeds default to 50% and are
@@ -94,17 +154,19 @@ Yellow Pad ──BLE gamepad──▶ Pi: /dev/input/js0
 
 | Pad | Gamepad | ROS `/joy` | `/cmd_vel` |
 |---|---|---|---|
-| Up held | left stick Y up by Up's speed | `axes[1]` = +speed | `linear.x` = +speed × 0.3 |
-| Down held | left stick Y down | `axes[1]` = −speed | `linear.x` = −speed × 0.3 |
+| Up / Forward held | left stick Y up by that speed | `axes[1]` = +speed | `linear.x` = +speed × 0.3 |
+| Down / Back held | left stick Y down | `axes[1]` = −speed | `linear.x` = −speed × 0.3 |
 | Left held | left stick X left | `axes[0]` = +speed | `angular.z` = +speed × 1.0 |
 | Right held | left stick X right | `axes[0]` = −speed | `angular.z` = −speed × 1.0 |
 | Any arrow held | button 1 pressed | `buttons[0]` = 1 | enables motion |
 | Release / STOP / slide off | stick centered, button released | all 0 | robot stops |
+| A / B / C held (tabbed design) | button 2 / 3 / 4 | `buttons[1..3]` = 1 | nothing yet |
 
-Speeds are 0-100% of the robot's maximum, and the maximums live on the Pi in
-`config/yellow_pad.yaml` (`scale_linear.x` = 0.3 m/s,
-`scale_angular.yaw` = 1.0 rad/s). That keeps the top safe speed in the robot's
-config, not on the pad.
+Here "speed" is the stick fraction, 0 to 1: the percentage in the first
+design, or the set m/s or rad/s divided by the full-stick speed in the tabbed
+design. The full-stick speeds live on the Pi in `config/yellow_pad.yaml`
+(`scale_linear.x` = 0.3 m/s, `scale_angular.yaw` = 1.0 rad/s), so the top
+speed is set in the robot's config, not on the pad.
 
 **Safety:** `teleop_twist_joy` only publishes motion while button 0 is held
 (`require_enable_button: true`), and the pad only holds it while an arrow is
@@ -113,8 +175,9 @@ stop the robot. On release, teleop_twist_joy sends one zero Twist, then goes
 quiet.
 
 **Limits:** resistive touch reads one point at a time, so one direction at a
-time, no diagonals. Pairing works with Linux, macOS, Windows and Android; iOS
-generally ignores generic BLE gamepads.
+time, no diagonals, and you can't hold A/B/C while driving. Pairing works
+with Linux, macOS, Windows and Android; iOS generally ignores generic BLE
+gamepads.
 
 ## Running it
 
@@ -153,7 +216,7 @@ Install or update (copy from the Mac, then build on the Pi):
 
 ```bash
 # Mac
-scp -r /Users/pitosalas/mydev/yellow/yellow_pad pitosalas@dome-R1:~/ros2_ws/src/
+scp -r /Users/pitosalas/mydev/yellow_pad/yellow_pad pitosalas@dome-R1:~/ros2_ws/src/
 
 # Pi
 cd ~/ros2_ws
@@ -180,9 +243,11 @@ motor driver). Run only one teleop at a time: anything else publishing to
 ros2 topic echo /cmd_vel
 ```
 
-With all speeds at 50%: Up → `linear.x: 0.15`, Down → `-0.15`,
+With the tabbed design's default speeds (Forward and Back 0.15 m/s, Left
+and Right 0.50 rad/s): Forward → `linear.x: 0.15`, Back → `-0.15`,
 Left → `angular.z: 0.5`, Right → `-0.5`, release → one all-zero message.
-Up at 80% → `0.24`.
+Forward set to 0.25 → `linear.x: 0.25`. (In the first design, 50% gives the
+same values as the defaults above, and Up at 80% gives `0.24`.)
 
 Troubleshooting:
 
@@ -196,15 +261,17 @@ Troubleshooting:
 
 ## Changing the firmware
 
-Everything is in `firmware/src/main.cpp`; build settings in
-`firmware/platformio.ini`.
+The tabbed design is `firmware/src/main.cpp`, the first design
+`firmware/src/arrows_v1.cpp`; build settings in `firmware/platformio.ini`. Each
+PlatformIO env builds one of the two files (`build_src_filter`). Add
+`-e cyd_v1` to the commands below to build or flash the first design.
 
 ### Build, flash, watch
 
 No install needed: PlatformIO runs via `uvx` (from `brew install uv`).
 
 ```bash
-cd /Users/pitosalas/mydev/yellow/firmware
+cd /Users/pitosalas/mydev/yellow_pad/firmware
 uvx --from platformio pio run                  # build only
 uvx --from platformio pio run -t upload        # build + flash
 uvx --from platformio pio device monitor       # serial output (Ctrl-C to quit)
@@ -219,15 +286,20 @@ Library and platform versions are pinned in `platformio.ini` (espressif32
 XPT2046_Touchscreen from GitHub). Change them deliberately: the BLE libraries
 are sensitive to version mismatches.
 
-### Common changes in main.cpp
+### Common changes
+
+The table is for `main.cpp` (tabbed design). In `arrows_v1.cpp`, the speed step
+and default are `SPEED_STEP` (10) and `SPEED_DEFAULT` (50), and the panel is
+`SPEED_ROWS`.
 
 | Want | Change |
 |---|---|
-| Speed step size | `SPEED_STEP` (10) |
-| Default speed for a fresh board | `SPEED_DEFAULT` (50). Saved speeds override it. |
+| Speed step, default, or a new setting | the `settings[]` table (values in thousandths: mm/s, mrad/s). Saved values override the defaults. |
+| Robot's full-stick speed changed in the YAML | `LINEAR_MAX`, `ANGULAR_MAX` |
 | Bluetooth name | `BleGamepad gamepad("Yellow Pad", ...)`. Then update `device_name` in the YAML and re-pair on the Pi (`remove`, then pair again). |
 | Taps land off-target | `RAW_X_MIN/MAX`, `RAW_Y_MIN/MAX` (touch calibration) |
-| Button positions/sizes | `PAD_CX`, `PAD_CY`, `KEY`, `SPEED_ROWS`, `MINUS_RECT`, `PLUS_RECT` |
+| Button positions/sizes | `TAB_RECTS`, `PAD_CX`, `PAD_CY`, `KEY`, `ACTION_RECTS`, `ROW_Y`, `ROW_H`, `MINUS_RECT`, `PLUS_RECT` |
+| A/B/C labels or gamepad buttons | `ACTION_LABELS`, `ACTION_BUTTONS` |
 | Colors | `COLOR_*` constants |
 | Which way an arrow pushes the stick | the `switch` in `sendGamepad()` |
 | Report rate / touch polling | `LOOP_MS` (20 ms) |
@@ -239,10 +311,13 @@ How the code is organized:
   4 buttons, range 0-32767, center 16384, manual reports).
 - `loop()` redraws the status when the connection changes, then calls
   `handleTouch()` every 20 ms.
-- `handleTouch()` decides what's under the finger: arrows and STOP follow the
-  finger continuously; speed rows and −/+ act once per tap.
-- `setActive()` changes the active arrow, redraws, and calls `sendGamepad()`,
-  which sets the axes and button 1 and sends a report.
+- `handleTouch()` decides what's under the finger. On the Drive page, arrows,
+  STOP and A/B/C follow the finger continuously. Tabs, setting rows and −/+ act
+  once per tap.
+- `setActive()` / `setActionHeld()` change the held arrow or button, redraw,
+  and call `sendGamepad()`, which sets the axes and buttons 1-4 and sends a
+  report.
+- `selectTab()` redraws the tab bar and the page below it.
 - Drawing is in the `draw*()` functions; only changed parts are redrawn.
 
 ### If the screen looks wrong
@@ -257,7 +332,7 @@ board may use an ST7789 instead: replace `-DILI9341_2_DRIVER=1` with
 - Long-press −/+ to change speed quickly.
 - Tap-to-toggle motion instead of hold-to-move (would need care: it removes
   the dead-man behavior).
-- Battery operation with a LiPo charger/booster board.
+- Battery operation: the PM11 module is the plan (see "The hardware").
 
 ## Changing the ROS side
 
@@ -277,9 +352,10 @@ board may use an ST7789 instead: replace `-DILI9341_2_DRIVER=1` with
 See `backup/README.md`. Short version:
 
 ```bash
-cd /Users/pitosalas/mydev/yellow/backup
+cd /Users/pitosalas/mydev/yellow_pad/backup
 shasum -a 256 -c factory-firmware-4MB.bin.sha256
-uvx esptool --port /dev/cu.usbserial-2130 --baud 115200 write-flash 0 factory-firmware-4MB.bin
+uvx esptool --port /dev/cu.usbserial-XXXX --baud 115200 write-flash 0 factory-firmware-4MB.bin
 ```
 
-The Yellow Pad firmware can be flashed again anytime from `firmware/`.
+Replace `XXXX` with the board's port (`ls /dev/cu.usbserial-*`). The Yellow
+Pad firmware can be flashed again anytime from `firmware/`.

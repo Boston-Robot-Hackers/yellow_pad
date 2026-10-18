@@ -1,4 +1,4 @@
-// Yellow Pad: a touchscreen BLE gamepad for driving a ROS robot via teleop_twist_joy.
+// Yellow Pad, first design (arrows + speed panel in %): a touchscreen BLE gamepad for driving a ROS robot via teleop_twist_joy.
 //
 // Holding an arrow moves the left stick in that direction by that arrow's speed
 // and holds button 1 (the teleop enable / dead-man button). Releasing stops.

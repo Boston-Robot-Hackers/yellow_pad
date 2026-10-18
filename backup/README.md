@@ -27,14 +27,14 @@ before flashing the Yellow Pad firmware.
 3. Check the backup is intact:
 
    ```bash
-   cd /Users/pitosalas/mydev/yellow/backup
+   cd /Users/pitosalas/mydev/yellow_pad/backup
    shasum -a 256 -c factory-firmware-4MB.bin.sha256
    ```
 
-4. Write it back (replace the port if it differs):
+4. Write it back (replace `XXXX` with the port from step 2):
 
    ```bash
-   uvx esptool --port /dev/cu.usbserial-2130 --baud 115200 write-flash 0 factory-firmware-4MB.bin
+   uvx esptool --port /dev/cu.usbserial-XXXX --baud 115200 write-flash 0 factory-firmware-4MB.bin
    ```
 
    This overwrites everything, including saved settings, and takes a few minutes.
